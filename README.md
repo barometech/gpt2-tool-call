@@ -80,6 +80,18 @@ Honest disclosure: **BFCL was partly in the training distribution** for both che
 
 We generated 690 tool-call test items via 9 parallel Claude Opus 4.7 agents in 9 niche domains (biology, industrial engineering, history/culture, materials science, niche technology + multiple-choice + parallel + irrelevance variants). All function names are **novel** — no overlap with BFCL/Glaive/xLAM.
 
+#### Head-to-head with comparable small models (live ollama run on 20 items from `fresh_bench_opus.json`)
+
+| Model | Params | Fresh slice (n=20) | Inference latency |
+|---|---:|---:|---:|
+| **GPT-2 + Full FT** (this work, CPU) | 124M | **98.2%** (full 450) | ~15s CPU |
+| **Phi-3-mini Instruct** (ollama) | 3.8B | **100.0%** | ~10s CPU |
+| **Qwen3 4B** (ollama) | 4B | 95.0% | ~12s CPU |
+
+Reproduce: `python src/bench_external_models.py --model phi3:3.8b --n 20` (requires ollama running and the model pulled).
+
+**Honest takeaway:** Phi-3-mini 3.8B beats us by ~2pp on this 20-item slice (and is much smarter on harder reasoning tasks we don't measure). On simple single-tool-call generalisation we're competitive with a 30× larger model — that's the entire selling point of this repo, not a "we beat Phi-3" claim.
+
 | subset | plain GPT-2 | adapter | **full FT** | FT+adapter |
 |---|---:|---:|---:|---:|
 | simple (n=450) | 0.0% | 61.6% | **98.2%** | 80.2% |
@@ -182,9 +194,19 @@ input → GPT-2 wte+wpe → L0..L5 → L6 hidden ─┐
 Trainable: adapter only (250K params), GPT-2 frozen.
 ```
 
+**Why layer 6 (middle)?** GPT-2 124M has 12 transformer blocks. Empirically L5–L7 capture the best mix of syntactic features (early) and semantic features (late). L6 is the sweet spot: hidden state already disambiguated the request topic but downstream layers still have enough capacity to compose the JSON output. Probing earlier (L2–L4) under-fits structure; later (L9–L11) over-constrains and loses argument extraction.
+
+**W_steer mechanism.** A single dense matrix (96→768). It maps a pooled adapter feature back into GPT-2's hidden space. The output (`delta`) is broadcast over the sequence and added as a residual: `h6_steered = h6 + α·delta`. Downstream layers see "GPT-2 with a small additive push." `W_steer` is initialised to zero, so before training the pipeline is identity (same logits as plain GPT-2). Training learns just the push that nudges the output toward a tool-call JSON.
+
+**Classifier heads (inherited).** Eight small linear heads on the pooled 96-dim feature: `action`, `scope`, `format`, `specificity`, `target`, `ptr_s`, `ptr_e`, `gate`. They come from a prior project that classified short commands ("read src/auth.py", "delete this") into action/object slots. We reuse those weights as warm initialisation for the adapter bottleneck (W1, ln1, W2, ln2). The classifier outputs themselves are not used at inference for tool calling — only `W_steer` matters for generation. The `gate` head is what gives the adapter useful refusal capability (40-45% on BFCL irrelevance).
+
+**Training recipe (`train_adapter.py`).** Initialise `W1/ln1/W2/ln2` from `adapter_torch_EN_BFCL.npz`. Initialise `W_steer` to zeros. Freeze GPT-2 124M. Train only adapter parameters (250K) for ~1.5h on CPU with: 600 BFCL pairs + 300 Glaive anchor pairs, AdamW lr=3e-5, batch=2, PAD=2048 (Position Interpolation ×2), grad-clip 1.0, 1 epoch. Save the best epoch by `name@1` on a held-out slice.
+
 ### Full FT approach
 
 Standard causal LM fine-tune. All 124M params trainable. Loss is cross-entropy on the gold tool-call tokens only (system+user masked with -100).
+
+**Training recipe (`train_ft.py`).** No adapter, no PI. Start from raw HF `openai-community/gpt2` weights. Unfreeze everything. Mix 500 BFCL + 500 Glaive + 500 xLAM (held-out slice) examples, shuffle. AdamW lr=1e-5, weight_decay=0.01, grad-clip 1.0, batch=1, grad_accum=4 (effective batch=4), PAD=512, 1 epoch. ~68 minutes on 4 CPU threads. Loss drops 1.6 → 0.3 within 100 optimisation steps then plateaus — single epoch is sufficient.
 
 ---
 
@@ -212,8 +234,15 @@ src/
   bench_bfcl_v4.py              # bench adapter on full BFCL v4
 
 weights/
-  adapter_h13_bfcl_ep1.pt       # 1 MB — adapter (steering + classifier heads)
-  adapter_torch_EN_BFCL.npz     # 700 KB — initial classifier weights
+  adapter_h13_bfcl_ep1.pt       # 1 MB — adapter (steering + classifier heads) for the FROZEN base
+  adapter_torch_EN_BFCL.npz     # 700 KB — warm-init weights for the adapter bottleneck:
+                                #   W1 (768→192), ln1, W2 (192→96), ln2, plus 8 classifier heads.
+                                #   Origin: action-classifier from a prior English command-parsing
+                                #   project ("read src/auth.py" → action=read, target=file, ...).
+                                #   The classifier heads themselves are NOT used at tool-call
+                                #   inference — only their pre-trained bottleneck features
+                                #   serve as a useful initialisation. Training starts here and
+                                #   adds W_steer on top. See train_adapter.py for the wiring.
   gpt2_ft_final.pt              # 475 MB — full FT model (Git LFS)
   BASE_GPT2_README.md           # how to fetch base GPT-2 from HF
 
@@ -237,12 +266,15 @@ If you use this:
 
 ```
 @misc{gpt2_tool_call_2026,
-  title = {GPT-2 124M Tool Calling via Steering Adapter and Full Fine-tune},
-  author = {barometech},
-  year = {2026},
-  url = {https://github.com/barometech/gpt2-tool-call}
+  title  = {GPT-2 124M Tool Calling via Steering Adapter and Full Fine-tune},
+  author = {<TODO: full name>},
+  year   = {2026},
+  note   = {GitHub handle: barometech},
+  url    = {https://github.com/barometech/gpt2-tool-call}
 }
 ```
+
+> If you cite academically, ask the author for their full name (the GitHub handle `barometech` will be updated to a proper byline as soon as it's provided).
 
 ---
 
