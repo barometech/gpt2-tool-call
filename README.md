@@ -2,6 +2,20 @@
 
 **TL;DR:** GPT-2 124M can do tool calling. Two production checkpoints, both reproducible on CPU. Adapter approach (250K trainable) → 50% BFCL v4. Full fine-tune (124M trainable, 68 min CPU) → **92% on 690-item fresh benchmark with zero training contamination**.
 
+## Contents
+
+- [Highlights](#highlights)
+- [Two checkpoints](#two-checkpoints)
+- [Benchmarks](#benchmarks)
+  - [BFCL v4 (with leakage disclosed)](#bfcl-v4-official-berkeley-function-calling-leaderboard)
+  - [Fresh bench — 690 items, zero leakage](#fresh-bench--690-items-zero-leakage)
+- [Reproducing](#reproducing)
+- [Architecture](#architecture)
+- [Limitations](#honest-limitations)
+- [Files](#files)
+- [License & citing](#license)
+- 🇷🇺 [Описание на русском](#описание-на-русском)
+
 ---
 
 ## Highlights
@@ -229,3 +243,108 @@ If you use this:
   url = {https://github.com/barometech/gpt2-tool-call}
 }
 ```
+
+---
+
+## Описание на русском
+
+**Кратко:** GPT-2 124M умеет вызывать функции (tool calling). Два production-чекпоинта, оба воспроизводимы на CPU. Adapter (250K обучаемых параметров) → 50% на BFCL v4. Full fine-tune (124M обучаемых, 68 минут на CPU) → **92% на 690-задачном свежем бенчмарке без утечки тренировочных данных**.
+
+### Что есть
+
+| Модель | Параметров | Время обучения | BFCL v4 OVERALL | Свежий бенч (без leakage) |
+|---|---:|---:|---:|---:|
+| **GPT-2 + Adapter** (наше) | 125M (250K обучено) | ~1.5ч CPU | **50.0%** | 53.5% |
+| **GPT-2 + Full FT** (наше) | 124M (всё обучено) | 68 мин CPU | ~95% на subset'ах из трейна | **92.0%** |
+| Phi-3-mini Instruct | 3.8B | проприетарно | ~40% | — |
+| Llama-3.1 8B Instruct | 8B | проприетарно | ~62% | — |
+| Llama-3.1 70B Instruct | 70B | проприетарно | ~70% | — |
+| GPT-4-turbo | ~1.7T | проприетарно | ~88% | — |
+
+### Два чекпоинта
+
+**1. Adapter** (`weights/adapter_h13_bfcl_ep1.pt`, 1 МБ)
+- Замороженный GPT-2 124M + steering adapter 250K параметров на 6-м слое
+- Добавляет delta-вектор в residual stream через бутылочное горлышко (768→192→96→768)
+- Голова отказа (irrelevance detection) сохранена: 40-45% на BFCL irrelevance
+- **Использовать когда:** мало памяти, нужен отказ от ненужных вызовов, минимум обучения
+
+**2. Full FT** (`weights/gpt2_ft_final.pt`, 475 МБ — через Git LFS)
+- Все 124M параметров GPT-2 обновлены
+- 1500 mixed примеров (500 BFCL + 500 Glaive + 500 xLAM holdout slice), 1 эпоха
+- LR 1e-5, AdamW, grad_accum=4, PAD=512
+- **Использовать когда:** нужна максимальная точность на новых функциях
+
+### Бенчмарки
+
+#### BFCL v4 (официальный Berkeley Function Calling Leaderboard)
+
+Источник: `bfcl_eval/data` из `gorilla-llm/Berkeley-Function-Calling-Leaderboard`
+
+**Честная оговорка:** BFCL **частично был в обучающей выборке** обоих чекпоинтов (первые ~125 примеров каждого subset'a использовались для обучения). То есть цифры BFCL v4 ниже **с утечкой**.
+
+#### Свежий бенч — 690 задач, ноль утечки
+
+Мы сгенерировали 690 тестовых tool-call задач через 9 параллельных агентов Claude Opus 4.7 в 9 нишевых доменах (биология, промышленность, история/культура, материаловедение, нишевая техника + multiple-choice + parallel + irrelevance). Все имена функций **новые** — без пересечения с BFCL/Glaive/xLAM.
+
+| Задача | plain GPT-2 | adapter | **full FT** | FT+adapter |
+|---|---:|---:|---:|---:|
+| simple (n=450) | 0.0% | 61.6% | **98.2%** | 80.2% |
+| multiple (n=80) | 0.0% | 2.5% | **62.5%** | 55.0% |
+| parallel (n=80) | 0.0% | 16.2% | **88.8%** | 88.8% |
+| irrelevance (n=80) | 100.0% \** | **96.2%** | 90.0% | 53.8% |
+| **OVERALL (n=690)** | 11.6% | 53.5% | **92.0%** | 75.2% |
+
+\** plain GPT-2 «100%» на irrelevance — это методологический артефакт: модель никогда не выдаёт валидное имя функции, поэтому формально проходит refusal-check.
+
+### Воспроизведение
+
+```bash
+git clone https://github.com/barometech/gpt2-tool-call
+cd gpt2-tool-call
+git lfs pull   # подтянуть gpt2_ft_final.pt (475 МБ)
+
+pip install torch==2.4.0+cpu fastapi numpy safetensors tokenizers \
+    --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+
+# Скачать базовые веса GPT-2
+huggingface-cli download openai-community/gpt2 --local-dir weights/base_gpt2
+```
+
+### Честные ограничения
+
+- **Контекст** ≤ 1024 токенов (нативно у GPT-2). Эксперименты с Position Interpolation не сохранили качество надёжно.
+- **Многошаговое рассуждение:** GPT-2 124M не может декомпозировать многошаговые научные задачи с богатым набором tools. Работает хорошо для **одного tool call**, ломается на 5-шаговых workflow.
+- **Ансамбль клонов = ноль выгоды.** Тестили 10× workers + 1 orchestrator (одинаковые FT-веса, greedy decode). Результат: 100% единогласное голосование, та же точность что у одной модели, 7× медленнее. Реальному ансамблю нужна **разнородность** (разные FT-прогоны или sampling temperatures).
+- **Только английский.** Многоязычность не тестировалась.
+- **Генерация кода:** GPT-2 124M не способен писать осмысленный код.
+
+### Что внутри репо
+
+```
+src/                          — код
+  integrated_gpt2_torch.py    — GPT-2 backbone (чистый torch)
+  steering_v2.py              — архитектура adapter
+  long_context_pi_chunk.py    — Position Interpolation helper
+  train_ft.py                 — full FT (~68 мин)
+  train_adapter.py            — adapter training (~1.5ч)
+  bench_ft.py                 — бенч FT на BFCL v4
+  bench_fresh_4way.py         — бенч plain/adapter/ft/ft+adapter на 690 fresh items
+  bench_bfcl_v4.py            — бенч adapter на полном BFCL v4
+
+weights/                      — веса
+  adapter_h13_bfcl_ep1.pt     — 1 МБ — adapter (steering + classifier heads)
+  adapter_torch_EN_BFCL.npz   — 700 КБ — стартовые веса классификатора
+  gpt2_ft_final.pt            — 475 МБ — full FT модель (Git LFS)
+
+bench/                        — данные свежего бенчмарка
+  fresh_bench_*.json          — 9 файлов, 690 items total — сгенерировано Claude Opus 4.7
+
+results/                      — сырые результаты
+  h13_bfcl_v4.json            — BFCL v4 для adapter
+  fresh_4way.json             — 4-way fresh bench
+```
+
+### Лицензия
+
+MIT. Используй для research, коммерции, чего угодно. Без гарантий.
