@@ -1,21 +1,24 @@
-"""Fresh bench — 4 модели на 690 свежих промптах (без leakage).
+# -*- coding: utf-8 -*-
+"""Fresh bench — 4 models on 690 fresh prompts (no leakage).
 
 Variants:
-  1. plain      — чистый GPT-2 124M (HF base, без FT и без adapter)
+  1. plain      — pure GPT-2 124M (HF base, no FT, no adapter)
   2. adapter    — frozen GPT-2 + h13_ep1 adapter (250K trainable)
-  3. ft         — full FT GPT-2 (124M trainable, без adapter)
-  4. ft_adapter — full FT GPT-2 + h13_ep1 adapter сверху (комбо)
+  3. ft         — full FT GPT-2 (124M trainable, no adapter)
+  4. ft_adapter — full FT GPT-2 + h13_ep1 adapter on top (combo)
 
-Bench sources (450 + multiple + parallel + irrelevance = ~690):
-  simple: 6 файлов
-  multiple, parallel, irrelevance — отдельно
+Bench sources (450 simple + 80 multiple + 80 parallel + 80 irrelevance = 690):
+  simple: 6 files
+  multiple, parallel, irrelevance — separate
+
+Smoke mode: `--smoke` runs only 20 simple items per model (~10 min total)
 """
-import os, sys, json, re, time
+import os, sys, json, re, time, argparse
 from pathlib import Path
 import torch
 sys.stdout.reconfigure(encoding='utf-8') if hasattr(sys.stdout, 'reconfigure') else None
-sys.path.insert(0, "code")
-sys.path.insert(0, ".")
+# import from same package directory regardless of CWD
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from integrated_gpt2_torch import GPT2, load_gpt2_torch_weights, encode, decode
 from steering_v2 import FullSteeringGPT2, load_classifier_from_npz
@@ -25,16 +28,16 @@ DEVICE = torch.device('cpu')
 torch.set_num_threads(4)
 
 FRESH_SIMPLE = [
-    "../bench/fresh_bench_opus.json",
-    "../bench/fresh_bench_bio.json",
-    "../bench/fresh_bench_industrial.json",
-    "../bench/fresh_bench_culture.json",
-    "../bench/fresh_bench_materials.json",
-    "../bench/fresh_bench_nichetech.json",
+    str(Path(__file__).resolve().parent.parent / "bench" / "fresh_bench_opus.json"),
+    str(Path(__file__).resolve().parent.parent / "bench" / "fresh_bench_bio.json"),
+    str(Path(__file__).resolve().parent.parent / "bench" / "fresh_bench_industrial.json"),
+    str(Path(__file__).resolve().parent.parent / "bench" / "fresh_bench_culture.json"),
+    str(Path(__file__).resolve().parent.parent / "bench" / "fresh_bench_materials.json"),
+    str(Path(__file__).resolve().parent.parent / "bench" / "fresh_bench_nichetech.json"),
 ]
-FRESH_MULTIPLE = "../bench/fresh_bench_multiple.json"
-FRESH_PARALLEL = "../bench/fresh_bench_parallel.json"
-FRESH_IRREL = "../bench/fresh_bench_irrelevance.json"
+FRESH_MULTIPLE = str(Path(__file__).resolve().parent.parent / "bench" / "fresh_bench_multiple.json")
+FRESH_PARALLEL = str(Path(__file__).resolve().parent.parent / "bench" / "fresh_bench_parallel.json")
+FRESH_IRREL = str(Path(__file__).resolve().parent.parent / "bench" / "fresh_bench_irrelevance.json")
 
 
 def load_all():
@@ -157,8 +160,10 @@ def eval_set(name, items, gen_fn, build_fn, check_fn):
     return correct, total
 
 
-def run_all_benches(label, gen_fn):
+def run_all_benches(label, gen_fn, smoke=False):
     simple, mult, par, irr = load_all()
+    if smoke:
+        simple, mult, par, irr = simple[:20], mult[:5], par[:5], irr[:5]
     print(f"\n  [{label}]  simple={len(simple)}  multiple={len(mult)}  parallel={len(par)}  irrelevance={len(irr)}")
     r = {}
     if simple:
@@ -177,7 +182,11 @@ def run_all_benches(label, gen_fn):
 
 
 def main():
-    print("[FRESH BENCH — 4 модели]")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--smoke", action="store_true", help="Fast smoke test (20+5+5+5 items/model)")
+    args = ap.parse_args()
+    mode = "SMOKE" if args.smoke else "FULL"
+    print(f"[FRESH BENCH — 4 models, {mode} mode]")
 
     all_results = {}
 
@@ -186,36 +195,36 @@ def main():
     gpt_plain = GPT2()
     load_gpt2_torch_weights(gpt_plain)
     gpt_plain.to(DEVICE); gpt_plain.eval()
-    all_results["plain"] = run_all_benches("plain", lambda p: gen_plain(gpt_plain, p))
+    all_results["plain"] = run_all_benches("plain", smoke=args.smoke, gen_fn=lambda p: gen_plain(gpt_plain, p))
     del gpt_plain
 
     # 2. adapter only (frozen GPT-2 + h13)
     print("\n=== Loading adapter (frozen GPT-2 + h13_ep1) ===")
     m = FullSteeringGPT2(adapter_layer=6, alpha=1.0)
     load_gpt2_torch_weights(m.gpt)
-    load_classifier_from_npz(m, "../weights/adapter_torch_EN_BFCL.npz")
-    m.adapter.load_state_dict(torch.load("../weights/adapter_h13_bfcl_ep1.pt", map_location='cpu'))
+    load_classifier_from_npz(m, str(Path(__file__).resolve().parent.parent / "weights" / "adapter_torch_EN_BFCL.npz"))
+    m.adapter.load_state_dict(torch.load(str(Path(__file__).resolve().parent.parent / "weights" / "adapter_h13_bfcl_ep1.pt"), map_location='cpu'))
     interpolate_wpe(m.gpt, 2048)
     m.freeze_gpt(); m.to(DEVICE); m.eval()
-    all_results["adapter"] = run_all_benches("adapter", lambda p: gen_adapter(m, p))
+    all_results["adapter"] = run_all_benches("adapter", smoke=args.smoke, gen_fn=lambda p: gen_adapter(m, p))
     del m
 
     # 3. FT GPT-2 alone
     print("\n=== Loading FT GPT-2 ===")
     gpt_ft = GPT2()
-    gpt_ft.load_state_dict(torch.load("../weights/gpt2_ft_final.pt", map_location='cpu'))
+    gpt_ft.load_state_dict(torch.load(str(Path(__file__).resolve().parent.parent / "weights" / "gpt2_ft_final.pt"), map_location='cpu'))
     gpt_ft.to(DEVICE); gpt_ft.eval()
-    all_results["ft"] = run_all_benches("ft", lambda p: gen_plain(gpt_ft, p))
+    all_results["ft"] = run_all_benches("ft", smoke=args.smoke, gen_fn=lambda p: gen_plain(gpt_ft, p))
     del gpt_ft
 
     # 4. FT GPT-2 + adapter (combo)
     print("\n=== Loading FT GPT-2 + adapter ===")
     m2 = FullSteeringGPT2(adapter_layer=6, alpha=1.0)
-    m2.gpt.load_state_dict(torch.load("../weights/gpt2_ft_final.pt", map_location='cpu'))
-    load_classifier_from_npz(m2, "../weights/adapter_torch_EN_BFCL.npz")
-    m2.adapter.load_state_dict(torch.load("../weights/adapter_h13_bfcl_ep1.pt", map_location='cpu'))
+    m2.gpt.load_state_dict(torch.load(str(Path(__file__).resolve().parent.parent / "weights" / "gpt2_ft_final.pt"), map_location='cpu'))
+    load_classifier_from_npz(m2, str(Path(__file__).resolve().parent.parent / "weights" / "adapter_torch_EN_BFCL.npz"))
+    m2.adapter.load_state_dict(torch.load(str(Path(__file__).resolve().parent.parent / "weights" / "adapter_h13_bfcl_ep1.pt"), map_location='cpu'))
     m2.freeze_gpt(); m2.to(DEVICE); m2.eval()
-    all_results["ft_adapter"] = run_all_benches("ft_adapter", lambda p: gen_adapter(m2, p))
+    all_results["ft_adapter"] = run_all_benches("ft_adapter", smoke=args.smoke, gen_fn=lambda p: gen_adapter(m2, p))
     del m2
 
     # ===== SUMMARY =====
@@ -244,7 +253,7 @@ def main():
             row += f"{'':>14}"
     print(row)
 
-    Path("../results/fresh_bench_4way_results.json").write_text(json.dumps({
+    Path(__file__).resolve().parent.parent / "results" / "fresh_bench_4way_results.json".write_text(json.dumps({
         k: {sub: {"correct": v[0], "n": v[1]} for sub, v in r.items()}
         for k, r in all_results.items()
     }, indent=2), encoding='utf-8')

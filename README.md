@@ -116,8 +116,21 @@ git lfs pull   # fetch gpt2_ft_final.pt (475 MB)
 pip install torch==2.4.0+cpu fastapi numpy safetensors tokenizers \
     --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
 
-# Download base GPT-2 weights
+# Base GPT-2 weights are auto-downloaded on first run to weights/base_gpt2/
+# (or pre-pull manually:)
 huggingface-cli download openai-community/gpt2 --local-dir weights/base_gpt2
+```
+
+**Quick smoke test (~10 min, 35 prompts per model):**
+
+```bash
+python src/bench_fresh_4way.py --smoke
+```
+
+Full bench (4 models × 690 prompts, ~6h CPU):
+
+```bash
+python src/bench_fresh_4way.py
 ```
 
 ### 2. Run benchmarks

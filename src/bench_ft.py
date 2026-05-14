@@ -19,7 +19,7 @@ GLAIVE_FILE = Path(os.environ.get("GLAIVE_FILE", "./data/glaive/glaive-function-
 XLAM_FILE = os.environ.get("XLAM_FILE", "./data/xlam/train.parquet")
 API_BANK_FILE = Path(os.environ.get("API_BANK_FILE", "./data/api_bank/level-1-api.json"))
 
-FT_WEIGHTS = Path("../weights/gpt2_ft_final.pt")
+FT_WEIGHTS = Path(str(Path(__file__).resolve().parent.parent / "weights" / "gpt2_ft_final.pt"))
 N_PER_BENCH = 50
 
 # BFCL v4 — все 13 subsets, чтобы получить OVERALL (как у h13)

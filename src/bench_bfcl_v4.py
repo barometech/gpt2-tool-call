@@ -136,8 +136,8 @@ def main():
     print("[Full BFCL v4 eval — h13_ep1, greedy, liberal parser]")
     base = FullSteeringGPT2(adapter_layer=6, alpha=1.0)
     load_gpt2_torch_weights(base.gpt)
-    load_classifier_from_npz(base, "../weights/adapter_torch_EN_BFCL.npz")
-    base.adapter.load_state_dict(torch.load("../weights/adapter_h13_bfcl_ep1.pt", map_location='cpu'))
+    load_classifier_from_npz(base, str(Path(__file__).resolve().parent.parent / "weights" / "adapter_torch_EN_BFCL.npz"))
+    base.adapter.load_state_dict(torch.load(str(Path(__file__).resolve().parent.parent / "weights" / "adapter_h13_bfcl_ep1.pt"), map_location='cpu'))
     interpolate_wpe(base.gpt, 2048)
     base.freeze_gpt(); base.to(DEVICE); base.eval()
 

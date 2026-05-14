@@ -145,7 +145,7 @@ if __name__ == "__main__":
     print(f"Building FullSteeringGPT2 (resume torch_EN_BFCL)...")
     model = FullSteeringGPT2(adapter_layer=6, alpha=1.0)
     load_gpt2_torch_weights(model.gpt)
-    load_classifier_from_npz(model, "../weights/adapter_torch_EN_BFCL.npz")
+    load_classifier_from_npz(model, str(Path(__file__).resolve().parent.parent / "weights" / "adapter_torch_EN_BFCL.npz"))
     model.freeze_gpt(); model.to(DEVICE); model.eval()
 
     print(f"  GPT-2: 124M frozen")

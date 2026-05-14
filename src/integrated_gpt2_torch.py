@@ -89,8 +89,27 @@ class GPT2(nn.Module):
         return logits, captured
 
 
+def _ensure_base_gpt2(gpt2_dir: Path):
+    """Auto-download openai-community/gpt2 to gpt2_dir if missing."""
+    if (gpt2_dir / "model.safetensors").exists() and (gpt2_dir / "tokenizer.json").exists():
+        return
+    print(f"[load_gpt2_torch_weights] base GPT-2 not found at {gpt2_dir}, downloading from HF...")
+    try:
+        from huggingface_hub import snapshot_download
+        snapshot_download(repo_id="openai-community/gpt2", local_dir=str(gpt2_dir),
+                          allow_patterns=["*.json", "*.safetensors"])
+        print(f"[load_gpt2_torch_weights] downloaded to {gpt2_dir}")
+    except Exception as e:
+        raise RuntimeError(
+            f"Base GPT-2 weights missing at {gpt2_dir} and auto-download failed: {e}\n"
+            f"Manual fix: pip install huggingface-hub && "
+            f"huggingface-cli download openai-community/gpt2 --local-dir {gpt2_dir}"
+        ) from e
+
+
 def load_gpt2_torch_weights(model: GPT2, gpt2_dir=GPT2_DIR):
-    """Загружает HF-формат weights в наш torch GPT-2."""
+    """Load HF-format weights into our torch GPT-2. Auto-downloads base if missing."""
+    _ensure_base_gpt2(gpt2_dir)
     from safetensors import safe_open
     w = {}
     with safe_open(gpt2_dir / "model.safetensors", framework="pt") as f:

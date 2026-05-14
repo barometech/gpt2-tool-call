@@ -24,7 +24,7 @@ from long_context_pi_chunk import interpolate_wpe
 DEVICE = torch.device('cpu')
 torch.set_num_threads(4)
 
-CKPT_DIR = Path("../weights")
+CKPT_DIR = Path(__file__).resolve().parent.parent / "weights"
 RESUME_PT = CKPT_DIR / "adapter_h12_mt_anchor_ep5.pt"
 RESUME_NPZ = CKPT_DIR / "adapter_torch_EN_BFCL.npz"
 BFCL_DATA = Path(os.environ.get("BFCL_DATA", "./data/bfcl_v4"))

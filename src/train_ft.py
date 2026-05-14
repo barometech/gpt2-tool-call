@@ -22,7 +22,7 @@ BFCL_DATA = Path(os.environ.get("BFCL_DATA", "./data/bfcl_v4"))
 GLAIVE_FILE = Path(os.environ.get("GLAIVE_FILE", "./data/glaive/glaive-function-calling-v2.json"))
 XLAM_FILE = os.environ.get("XLAM_FILE", "./data/xlam/train.parquet")
 
-OUT_DIR = Path("../weights")
+OUT_DIR = Path(__file__).resolve().parent.parent / "weights"
 OUT_DIR.mkdir(exist_ok=True)
 
 PAD = 512
