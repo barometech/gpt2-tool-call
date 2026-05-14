@@ -1,0 +1,67 @@
+[
+  {
+    "subset": "simple_python",
+    "n": 40,
+    "acc": 0.8
+  },
+  {
+    "subset": "live_simple",
+    "n": 40,
+    "acc": 0.725
+  },
+  {
+    "subset": "simple_java",
+    "n": 40,
+    "acc": 0.475
+  },
+  {
+    "subset": "simple_javascript",
+    "n": 40,
+    "acc": 0.525
+  },
+  {
+    "subset": "multiple",
+    "n": 40,
+    "acc": 0.3
+  },
+  {
+    "subset": "live_multiple",
+    "n": 40,
+    "acc": 0.2
+  },
+  {
+    "subset": "parallel",
+    "n": 40,
+    "acc": 0.725
+  },
+  {
+    "subset": "live_parallel",
+    "n": 16,
+    "acc": 0.625
+  },
+  {
+    "subset": "parallel_multiple",
+    "n": 40,
+    "acc": 0.425
+  },
+  {
+    "subset": "live_parallel_multiple",
+    "n": 24,
+    "acc": 0.4583333333333333
+  },
+  {
+    "subset": "irrelevance",
+    "n": 40,
+    "acc": 0.4
+  },
+  {
+    "subset": "live_irrelevance",
+    "n": 40,
+    "acc": 0.45
+  },
+  {
+    "subset": "live_relevance",
+    "n": 16,
+    "acc": 0.375
+  }
+]

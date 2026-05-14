@@ -1,0 +1,74 @@
+{
+  "plain": {
+    "simple": {
+      "correct": 0,
+      "n": 450
+    },
+    "multiple": {
+      "correct": 0,
+      "n": 80
+    },
+    "parallel": {
+      "correct": 0,
+      "n": 80
+    },
+    "irrelevance": {
+      "correct": 80,
+      "n": 80
+    }
+  },
+  "adapter": {
+    "simple": {
+      "correct": 277,
+      "n": 450
+    },
+    "multiple": {
+      "correct": 2,
+      "n": 80
+    },
+    "parallel": {
+      "correct": 13,
+      "n": 80
+    },
+    "irrelevance": {
+      "correct": 77,
+      "n": 80
+    }
+  },
+  "ft": {
+    "simple": {
+      "correct": 442,
+      "n": 450
+    },
+    "multiple": {
+      "correct": 50,
+      "n": 80
+    },
+    "parallel": {
+      "correct": 71,
+      "n": 80
+    },
+    "irrelevance": {
+      "correct": 72,
+      "n": 80
+    }
+  },
+  "ft_adapter": {
+    "simple": {
+      "correct": 361,
+      "n": 450
+    },
+    "multiple": {
+      "correct": 44,
+      "n": 80
+    },
+    "parallel": {
+      "correct": 71,
+      "n": 80
+    },
+    "irrelevance": {
+      "correct": 43,
+      "n": 80
+    }
+  }
+}
