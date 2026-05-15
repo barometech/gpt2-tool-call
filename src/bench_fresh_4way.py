@@ -253,12 +253,16 @@ def main():
             row += f"{'':>14}"
     print(row)
 
-    Path(__file__).resolve().parent.parent / "results" / "fresh_bench_4way_results.json".write_text(json.dumps({
+output_path = Path(__file__).resolve().parent.parent / "results" / "fresh_bench_4way_results.json"
+output_path.parent.mkdir(parents=True, exist_ok=True)
+output_path.write_text(
+    json.dumps({
         k: {sub: {"correct": v[0], "n": v[1]} for sub, v in r.items()}
         for k, r in all_results.items()
-    }, indent=2), encoding='utf-8')
-    print(f"\nSaved -> fresh_bench_4way_results.json")
-
+    }, indent=2),
+    encoding='utf-8'
+)
+print(f"\nSaved -> {output_path}")
 
 if __name__ == "__main__":
     main()
